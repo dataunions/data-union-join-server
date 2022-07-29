@@ -107,7 +107,7 @@ class JoinServer {
 		this.expressApp.use(express.json({
 			limit: '1kb',
 		}))
-		this.expressApp.use((req, res, next) => this.signedRequestValidator(req).then(next).catch((err) => next(err)))
+		this.expressApp.use('/join', (req, _res, next) => this.signedRequestValidator(req).then(next).catch((err) => next(err)))
 		this.expressApp.post('/join', (req, res, next) => this.joinRequest(req, res, next))
 		this.customRoutes(this.expressApp)
 		this.expressApp.use(rest.error(this.logger))
