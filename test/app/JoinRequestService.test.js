@@ -3,12 +3,12 @@ const { assert, expect } = chai
 chai.use(require('chai-as-promised'))
 const sinon = require('sinon')
 const pino = require('pino')
-const { JoinRequestService, DataUnionJoinError, DataUnionRetrievalError } = require('../../src/service/JoinRequestService')
+const { JoinRequestService, DataUnionJoinError, DataUnionRetrievalError } = require('../../src/app/JoinRequestService')
 
 describe('Join Request Service', () => {
 	const MEMBER_ADDRESS = '0x0123456789012345678901234567890123456789'
 	const DATAUNION_ADDRESS = '0x1234567890123456789012345678901234567890'
-	const CHAIN = 'test-chain'
+	const CHAIN = 'polygon'
 
 	let joinRequestService
 	let dataUnionClient
@@ -33,9 +33,12 @@ describe('Join Request Service', () => {
 			getDataUnion: sinon.stub().resolves(dataUnionObject),
 		}
 
+		const clients = new Map()
+		clients.set(CHAIN, dataUnionClient)
+
 		onMemberJoin = sinon.stub()
 
-		joinRequestService = new JoinRequestService(logger, dataUnionClient, onMemberJoin)
+		joinRequestService = new JoinRequestService(logger, clients, onMemberJoin)
 	})
 
 	afterEach(() => {
@@ -51,12 +54,12 @@ describe('Join Request Service', () => {
 			assert.equal(response.dataUnion, DATAUNION_ADDRESS)
 			assert.equal(response.chain, CHAIN)
 		})
-	
+
 		it('rejects when data union is not found', async () => {
 			dataUnionClient.getDataUnion = sinon.stub().rejects()
 			await expect(joinRequestService.create(MEMBER_ADDRESS, DATAUNION_ADDRESS, CHAIN)).to.be.rejectedWith(DataUnionRetrievalError)
 		})
-	
+
 		it('rejects if the member is already a member', async () => {
 			dataUnionObject.isMember = sinon.stub().resolves(true),
 			await expect(joinRequestService.create(MEMBER_ADDRESS, DATAUNION_ADDRESS, CHAIN)).to.be.rejectedWith(DataUnionJoinError)

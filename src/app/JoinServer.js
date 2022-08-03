@@ -4,21 +4,18 @@ const http = require('http')
 const pino = require('pino')
 
 const { DataUnionClient } = require('@dataunions/client')
+const config = require('@streamr/config')
 
-const handler = require('../handler')
+const rest = require('../rest')
 const domain = require('../domain')
-const service = require('../service')
-
-
-const TOLERANCE_MILLIS = 5 * 60 * 1000 // 5 min
-const SignedRequestValidator = require('./SignedRequestValidatorMiddleware')(TOLERANCE_MILLIS)
+const { JoinRequestService } = require('./JoinRequestService')
 
 class JoinServer {
 	constructor({
 		/**
 		 * These options are primarily intended for end users
 		 */
-		
+
 		// Hex-encoded private key for your joinPartAgent address
 		privateKey,
 
@@ -46,20 +43,20 @@ class JoinServer {
 			name: 'main',
 			level: logLevel,
 		}),
-		dataUnionClient = new DataUnionClient({
-			auth: {
-				privateKey,
-			}
-		}),
-		signedRequestValidator = SignedRequestValidator.validator,
-		joinRequestService = new service.JoinRequestService(logger, dataUnionClient, onMemberJoin),
+		signedRequestValidator = rest.SignedRequestValidator.validator,
+		joinRequestService = undefined,
 	} = {}) {
 
 		this.expressApp = expressApp
 		this.logger = logger
-		this.dataUnionClient = dataUnionClient
 		this.signedRequestValidator = signedRequestValidator
 		this.customJoinRequestValidator = customJoinRequestValidator
+		if (!joinRequestService) {
+			this.clients = new Map()
+			this.clients.set('ethereum', this.newDataUnionClient('ethereum', privateKey))
+			this.clients.set('polygon', this.newDataUnionClient('polygon', privateKey))
+			joinRequestService = new JoinRequestService(logger, this.clients, onMemberJoin)
+		}
 		this.joinRequestService = joinRequestService
 		this.customRoutes = customRoutes
 
@@ -91,14 +88,29 @@ class JoinServer {
 		this.routes()
 	}
 
+	newDataUnionClient(chain, privateKey) {
+		const chains = config.Chains.load()
+		const options = {
+			auth: {
+				privateKey,
+			},
+			network: {
+				name: chains[chain].name,
+				chainId: chains[chain].id,
+				rpcs: chains[chain].rpcEndpoints,
+			}
+		}
+		return new DataUnionClient(options)
+	}
+
 	routes() {
 		this.expressApp.use(express.json({
 			limit: '1kb',
 		}))
-		this.expressApp.use((req, res, next) => this.signedRequestValidator(req).then(next).catch((err) => next(err)))
+		this.expressApp.use('/join', (req, _res, next) => this.signedRequestValidator(req).then(next).catch((err) => next(err)))
 		this.expressApp.post('/join', (req, res, next) => this.joinRequest(req, res, next))
 		this.customRoutes(this.expressApp)
-		this.expressApp.use(handler.error(this.logger))
+		this.expressApp.use(rest.error(this.logger))
 	}
 
 	start() {
@@ -108,7 +120,7 @@ class JoinServer {
 		}
 		this.expressApp.listen(this.port, backlog, callback)
 	}
-	
+
 	sendJsonResponse(res, status, response) {
 		res.set('content-type', 'application/json')
 		res.status(status)
@@ -116,11 +128,7 @@ class JoinServer {
 	}
 
 	sendJsonError(res, status, message) {
-		const errorMessage = {
-			error: {
-				message: message,
-			},
-		}
+		const errorMessage = new rest.ErrorMessage(message)
 		this.sendJsonResponse(res, status, errorMessage)
 	}
 
@@ -132,13 +140,24 @@ class JoinServer {
 			this.sendJsonError(res, 400, `Invalid member address: '${err.address}'`)
 			return
 		}
-	
+
 		let dataUnion
 		try {
 			dataUnion = new domain.Address(req.validatedRequest.dataUnion)
 		} catch (err) {
 			this.sendJsonError(res, 400, `Invalid Data Union contract address: '${err.address}'`)
 			return
+		}
+
+		let chain
+		try {
+			chain = domain.Chain.fromName(req.validatedRequest.chain)
+		} catch (err) {
+			this.sendJsonError(res, 400, `Invalid chain name: '${req.validatedRequest.chain}'`)
+			return
+		}
+		if (chain === undefined) {
+			chain = domain.Chain.DEFAULT_CHAIN_NAME
 		}
 
 		try {

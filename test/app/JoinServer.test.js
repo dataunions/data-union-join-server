@@ -1,17 +1,17 @@
-const { newUnitTestServer, logger } = require('../handler/newUnitTestServer')
+const { newUnitTestServer, logger } = require('../rest/newUnitTestServer')
 const request = require('supertest')
 const { assert } = require('chai')
 const sinon = require('sinon')
-const service = require('../../src/service')
+const app = require('../../src/app')
 
 describe('POST /join', async () => {
 	let srv
 
 	beforeEach(() => {
 		// JoinRequestService with mocked create()
-		const joinRequestService = new service.JoinRequestService(
+		const joinRequestService = new app.JoinRequestService(
 			logger,
-			undefined, // DU client
+			undefined, // clients
 			undefined, // onMemberJoin
 		)
 		joinRequestService.create = sinon.spy((member, dataUnion, chain) => {
@@ -42,7 +42,16 @@ describe('POST /join', async () => {
 				address: '0x766760C748bcEcf5876a6469a6aed3C642CdA261',
 				request: JSON.stringify({
 					dataUnion: '0x81ed645D344cB2096aBA56B94d336E6dcF80f6C6',
-					chain: 'test-chain',
+					chain: 'polygon',
+				}),
+			},
+		},
+		{
+			name: 'send join data union request without chain',
+			body: {
+				address: '0x766760C748bcEcf5876a6469a6aed3C642CdA261',
+				request: JSON.stringify({
+					dataUnion: '0x81ed645D344cB2096aBA56B94d336E6dcF80f6C6',
 				}),
 			},
 		},
@@ -61,11 +70,14 @@ describe('POST /join', async () => {
 			assert.isTrue(srv.joinRequestService.create.calledOnce)
 
 			const joinRequest = JSON.parse(tc.body.request)
-			assert.deepEqual(res.body, {
+			const expectedBody = {
 				member: tc.body.address,
 				dataUnion: joinRequest.dataUnion,
-				chain: joinRequest.chain,
-			})
+			}
+			if (joinRequest.chain) {
+				expectedBody.chain = joinRequest.chain
+			}
+			assert.deepEqual(res.body, expectedBody)
 		})
 	})
 
@@ -76,7 +88,7 @@ describe('POST /join', async () => {
 				address: '0x00000',
 				request: JSON.stringify({
 					dataUnion: '0x81ed645D344cB2096aBA56B94d336E6dcF80f6C6',
-					chain: 'test-chain',
+					chain: 'polygon',
 				}),
 			},
 			expectedErrorMessage: `Invalid member address: '0x00000'`,
@@ -87,10 +99,21 @@ describe('POST /join', async () => {
 				address: '0x766760C748bcEcf5876a6469a6aed3C642CdA261',
 				request: JSON.stringify({
 					dataUnion: '0x01234',
-					chain: 'test-chain',
+					chain: 'polygon',
 				}),
 			},
 			expectedErrorMessage: `Invalid Data Union contract address: '0x01234'`,
+		},
+		{
+			name: 'client sends invalid chain name',
+			body: {
+				address: '0x766760C748bcEcf5876a6469a6aed3C642CdA261',
+				request: JSON.stringify({
+					dataUnion: '0x81ed645D344cB2096aBA56B94d336E6dcF80f6C6',
+					chain: 'foobar',
+				}),
+			},
+			expectedErrorMessage: `Invalid chain name: 'foobar'`,
 		},
 	]
 	testCases.forEach((tc) => {

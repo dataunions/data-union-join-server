@@ -1,18 +1,19 @@
 class JoinRequestService {
-	constructor(logger, dataUnionClient, onMemberJoin) {
+	constructor(logger, clients, onMemberJoin) {
 		this.logger = logger
-		this.dataUnionClient = dataUnionClient
+		this.clients = clients
 		this.onMemberJoin = onMemberJoin
 	}
 
 	async create(member, dataUnion, chain) {
+		const dataUnionClient = this.clients.get(chain)
 		let du
 		try {
-			du = await this.dataUnionClient.getDataUnion(dataUnion)
+			du = await dataUnionClient.getDataUnion(dataUnion)
 		} catch (err) {
 			throw new DataUnionRetrievalError(`Error while retrieving data union ${dataUnion}: ${err.message}`)
 		}
-		
+
 		if (await du.isMember(member)) {
 			throw new DataUnionJoinError(`Member ${member} is already a member of ${dataUnion}!`)
 		}

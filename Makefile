@@ -41,7 +41,7 @@ npm-pack: ## Run npm pack
 
 .PHONY: npm-test
 npm-test: node_modules ## Run npm test
-	$(call npm, test)
+	$(call npm, test -- --trace-warnings)
 
 NODE_BIN:=$(shell pwd)/node_modules/.bin
 .PHONY: eslint
@@ -64,7 +64,7 @@ run: export NODE_ENV=development
 run: export LOG_LEVEL=trace
 run: export PRIVATE_KEY=0x7013b52cd5bcefcb813252ba4fd19de4ffbc7be60cd3da017448bbd883b15457
 run: ## Run Data Union Join Server
-	$(call node, src/cmd/duj-srv/main.js)
+	$(call node, src/cmd/join-server/main.js)
 
 .PHONY: aws-src-bundle
 ZIP:=/usr/bin/zip
